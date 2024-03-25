@@ -4,8 +4,191 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Document</title>
+  <link rel="stylesheet" href="make-a-quiz.css">
+  <link rel="stylesheet" href="navbar.css">
+  <link rel="stylesheet" href="general.css">
+  <link rel="stylesheet" href="cards.css">
 </head>
 <body>
+  <ul class="topnav">
+    <li><a  href="index.html">Home</a></li>
+    <li><a class="active" href="add-question.html">Add questions</a></li>
+    <li><a href="make-a-quiz.html">Create a quiz</a></li>
+    <li><a href="take-a-quiz.html">Take a quiz</a></li>
+    <li class="right"><a href="#about">About</a></li>
+  </ul>
   
+  <div class="content">
+    <div class="questions">
+      <h2>Questions Bank</h2>
+      <p>Click on a question to add it to the quiz.</p>
+      <div id="list" class="cards"></div>
+  </div>
+  
+  <div class="quiz">
+    <h2>The new quiz(<span id="questionCount">0</span> questions)</h2>
+    <input type="text" id="quizTitle" placeholder="Quiz title">
+    <button id="saveChanges">Save your changes</button>
+    <button id="startNewQuiz">Save this quiz and start a new one</button>
+
+    <p>If you want to remove a question from the quiz, you can click on the question here and it will be removed from the quiz.</p>
+  </div>
 </body>
+<script>
+  let host = "http://localhost:8080";
+let questions = [];
+let selectedQuestions = []; // Array to track selected questions
+displayTheQuestions();
+
+async function getAll() {
+  let response = await fetch(host + "/questions");
+  let result = await response.json();
+  return result;
+}
+
+async function displayTheQuestions() {
+  if (questions.length == 0) {
+    questions = await getAll();
+  }
+
+  let list = document.getElementById("list");
+  list.innerHTML = "";
+
+  for (let question of questions) {
+    let div = document.createElement("div");
+    div.className = "card";
+    div.style.cursor = 'pointer'; // Change mouse to pointer on hover
+    let innerHtml = `
+      <img src="${host}/questions/${question.id}/image" alt="question" style="width:100%">
+      <div class="container">
+        <h4><b>${question.id}</b></h4> 
+        <p>${question.description}</p>
+      </div>
+    `;
+    div.innerHTML = innerHtml;
+    list.appendChild(div);
+
+    // Add click event to toggle question selection
+    div.addEventListener('click', function() {
+      toggleQuestionSelection(question.id);
+    });
+  }
+}
+
+function toggleQuestionSelection(questionId) {
+  const index = selectedQuestions.indexOf(questionId);
+  if (index > -1) {
+    // If already selected, remove from the selection
+    selectedQuestions.splice(index, 1);
+  } else {
+    // Otherwise, add to the selection
+    selectedQuestions.push(questionId);
+  }
+  updateQuizSection();
+}
+
+function updateQuizSection() {
+  // Update the quiz section based on selectedQuestions array
+  const quizDiv = document.querySelector('.quiz');
+  const questionCountSpan = document.getElementById('questionCount');
+  questionCountSpan.textContent = selectedQuestions.length; // Update question count
+
+  // Clear existing selected questions display
+  quizDiv.querySelectorAll('.selected-question').forEach(sq => sq.remove());
+
+  // Add selected questions to the quiz section
+  selectedQuestions.forEach(questionId => {
+    const question = questions.find(q => q.id === questionId);
+    const questionDiv = document.createElement('div');
+    questionDiv.className = 'selected-question';
+    questionDiv.innerHTML = `
+      <img src="${host}/questions/${question.id}/image" alt="question" style="width:100%">
+      <div class="container">
+        <h4><b>${question.id}</b></h4> 
+        <p>${question.description}</p>
+      </div>
+    `;
+    questionDiv.style.cursor = 'pointer';
+    questionDiv.addEventListener('click', function() {
+      toggleQuestionSelection(question.id);
+    });
+    quizDiv.appendChild(questionDiv);
+  });
+}
+
+let currentQuizId = null; // If null, it means we are creating a new quiz.
+
+// Function to handle saving changes or creating a new quiz
+async function saveQuizChanges() {
+  const quizTitle = document.getElementById('quizTitle').value.trim();
+  if (quizTitle === '') {
+    alert('Please enter a title for the quiz.');
+    return;
+  }
+  if (selectedQuestions.length === 0) {
+    alert('Please select at least one question for the quiz.');
+    return;
+  }
+
+  const quizData = {
+    title: quizTitle,
+    questionIds: selectedQuestions
+  };
+
+  const endpoint = currentQuizId ? `/quizzes/${currentQuizId}` : '/quizzes';
+  const method = currentQuizId ? 'PUT' : 'POST';
+
+  try {
+    const response = await fetch(host + endpoint, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(quizData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const savedQuiz = await response.json();
+    console.log('Quiz saved:', savedQuiz);
+
+    // If it was a new quiz, store its ID for future updates
+    if (!currentQuizId) {
+      currentQuizId = savedQuiz.id;
+    }
+
+    alert('Quiz saved successfully!');
+  } catch (error) {
+    console.error('Error saving the quiz:', error);
+    alert('Failed to save the quiz.');
+  }
+}
+
+
+function startNewQuiz() {
+  saveQuizChanges().then(() => {
+    // Reset the state for a new quiz
+    currentQuizId = null;
+    selectedQuestions = [];
+    document.getElementById('quizTitle').value = '';
+    updateQuizSection();
+    // Potentially call `displayTheQuestions()` if that needs to reset as well.
+    window.location.reload(); // Refresh the page to start fresh
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const saveButton = document.getElementById('saveChanges');
+  const newQuizButton = document.getElementById('startNewQuiz');
+
+  if(saveButton) saveButton.addEventListener('click', saveQuizChanges);
+  if(newQuizButton) newQuizButton.addEventListener('click', startNewQuiz);
+});
+
+
+
+
+</script>
 </html>

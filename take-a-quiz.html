@@ -4,8 +4,217 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Document</title>
+  <link rel="stylesheet" href="take-a-quiz.css">
 </head>
 <body>
+  <ul class="topnav">
+    <li><a  href="index.html">Home</a></li>
+    <li><a class="active" href="add-question.html">Add questions</a></li>
+    <li><a href="make-a-quiz.html">Create a quiz</a></li>
+    <li><a href="take-a-quiz.html">Take a quiz</a></li>
+    <li class="right"><a href="#about">About</a></li>
+  </ul>
   
+  <div id="quiz-selection">
+    <p id = "quiz-selection-text">Here are the list of all available quizzes. Click on a quiz to start taking the quiz</p>
+    <!-- Quiz selection will be dynamically populated -->
+  </div>
+
+  <div id="quiz-container" style="display:none;">
+    <!-- Individual question will be dynamically populated -->
+    <div id="question-view">
+      <h1 id = "question-id"></h1>
+      <p id="question-title">Which word matches the image?</p>
+      <img id="question-image" src="" alt="Quiz Image" style="display: none; max-width: 100%;">
+      <ul id="question-choices">
+        <!-- Choices will be populated for each question -->
+      </ul>
+    </div>
+    <div id = "button-container">
+      <button id="prev-question" style="visibility:hidden;">Previous</button>
+      <button id="next-question">Next</button>
+      <p id="navigation-text">(Question <span id="current-question-number"></span> out of <span id="total-questions-number"></span>)</p>
+    </div>
+    </div>
+  
+  <div id="quiz-results" style="display:none;">
+    <h3 id = "quiz-name"></h3>
+    <h3>Your Score: <span id="user-score"></span> / <span id="total-questions"></span></h3>
+  </div>
 </body>
+<script>
+  let host = "http://localhost:8080";
+
+  
+async function getAll() {
+  let response = await fetch(host + "/questions");
+  let result = await response.json();
+  return result;
+}
+
+let questions = [];
+let selectedQuestions = []; // Array to track selected questions
+let user_answers = {}; // Object to store answers
+let currentQuiz = 0;
+let currentQuestionIndex = 0;
+let score = 0;
+let correct_answers = {};
+
+// Function to show all the available quizzes to choose from
+function populateQuizSelection(quizzes) {
+  const quizSelectionDiv = document.getElementById('quiz-selection');
+  quizzes.forEach(quiz => {
+    const quizCard = document.createElement('div');
+    quizCard.className = 'card'; // Make sure this matches your CSS for cards
+    quizCard.innerHTML = `
+      <div class="container">
+        <h4><b>${quiz.id}</b></h4> 
+        <p>${quiz.title} </p>
+        <p>(${quiz.questionIds.length} questions)</p>
+      </div>
+    `;
+    quizCard.onclick = () => startQuiz(quiz);
+    quizSelectionDiv.appendChild(quizCard);
+  });
+}
+
+
+function startQuiz(quiz) {
+  currentQuiz = quiz;
+  currentQuestionIndex = 0;
+  score = 0; // Reset score to 0 or a dummy value at the start of the quiz
+  // Assuming quiz.questions is an array of question objects
+  quiz.questions.forEach((question, index) => {
+    correct_answers[index] = question.answer; // Store each question's correct answer
+  });
+  // Hide the navigation and quiz selection, show the quiz container
+  document.querySelector('.topnav').style.display = 'none';
+  document.getElementById('quiz-selection').style.display = 'none';
+  document.getElementById('quiz-container').style.display = 'block';
+  document.getElementById('quiz-results').style.display = 'none';
+  document.getElementById('quiz-name').innerText = "You completed " + quiz.title;
+  showQuestion();
+}
+
+// Show the current question
+function showQuestion() {
+  const question = currentQuiz.questions[currentQuestionIndex];
+  document.getElementById('question-id').innerText = `${question.id}`;
+  document.getElementById('current-question-number').textContent = currentQuestionIndex + 1;
+  document.getElementById('total-questions-number').textContent = currentQuiz.questions.length;
+
+  const questionImage = document.getElementById('question-image');
+  // Update the image source
+  const imageUrl = `${host}/questions/${question.id}/image`;
+  questionImage.src = imageUrl;
+  questionImage.style.display = 'block';
+
+  const choicesList = document.getElementById('question-choices');
+  choicesList.innerHTML = ''; // Clear previous choices
+
+  question.choices.forEach((choice, index) => {
+    const choiceItem = document.createElement('div');
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = 'choice' + index;
+    radioInput.name = 'choice';
+    radioInput.value = choice;
+    // keeps track of the current selected anser
+    radioInput.addEventListener('change', function() {
+        user_answers[currentQuestionIndex] = this.value;
+        console.log(user_answers);
+    });
+
+    const label = document.createElement('label');
+    label.htmlFor = 'choice' + index;
+    label.textContent = choice;
+
+    choiceItem.appendChild(radioInput);
+    choiceItem.appendChild(label);
+    choicesList.appendChild(choiceItem);
+  });
+
+  // Adjust visibility of Previous button
+  document.getElementById('prev-question').style.visibility = currentQuestionIndex === 0 ? 'hidden' : 'visible';
+}
+
+// Handle choice selection
+function selectChoice(choice) {
+  if (choice === currentQuiz.questions[currentQuestionIndex].correctAnswer) {
+    score++;
+  }
+  if (currentQuestionIndex < currentQuiz.questions.length - 1) {
+    currentQuestionIndex++;
+    showQuestion();
+  } else {
+    endQuiz();
+  }
+}
+
+// Navigate to previous question
+document.getElementById('prev-question').onclick = () => {
+  if (currentQuestionIndex > 0) {
+    currentQuestionIndex--;
+    showQuestion();
+  }
+};
+
+// Navigate to next question
+document.getElementById('next-question').onclick = () => {
+  const currentQuestion = currentQuiz.questions[currentQuestionIndex];
+  // Check if the selected answer is correct
+  if (correct_answers[currentQuestionIndex] === user_answers[currentQuestionIndex]) {
+    score++;
+    console.log(score);
+  }
+  if (currentQuestionIndex < currentQuiz.questions.length - 1) {
+    currentQuestionIndex++;
+    showQuestion();
+  } else {
+    endQuiz();
+  }
+};
+
+// JavaScript Fetch API to get quizzes
+async function fetchQuizzes() {
+  try {
+    const response = await fetch('http://localhost:8080/quizzes');
+  if (!response.ok) {
+    // Handle errors here, for example:
+    console.error('Error fetching quizzes:', response.statusText);
+    return []; // Return an empty array or appropriate default
+  }
+  return await response.json();
+  } catch (error) {
+    console.error('There has been a problem with your fetch operation:', error);
+  }
+}
+
+// Function to end the quiz and display the results
+function endQuiz() {
+  // Hide the quiz container and show the results
+  document.getElementById('quiz-container').style.display = 'none';
+  const resultsDiv = document.getElementById('quiz-results');
+  resultsDiv.style.display = 'block';
+  // Display the computed score
+  document.getElementById('user-score').innerText = score;
+  document.getElementById('total-questions').innerText = currentQuiz.questions.length;
+  // Make the top menu visible again
+  document.querySelector('.topnav').style.display = 'block';
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const quizzes = await fetchQuizzes();
+    if (quizzes) {
+      populateQuizSelection(quizzes);
+    } else {
+      console.log('No quizzes found');
+    }
+  } catch (error) {
+    console.error('Error loading quizzes:', error);
+  }
+});
+
+</script>
 </html>
